@@ -82,8 +82,8 @@ function parseConnectUrl(url: string): { hostname: string; port: string } {
 // Start Server
 const start = async () => {
     try {
-        await fastify.listen({ port: config.PORT, host: '0.0.0.0' });
-        console.log(`Server listening on http://0.0.0.0:${config.PORT}`);
+        await fastify.listen({ port: config.PORT, host: config.HOST });
+        console.log(`Server listening on http://${config.HOST}:${config.PORT}`);
     } catch (err) {
         fastify.log.error(err);
         process.exit(1);

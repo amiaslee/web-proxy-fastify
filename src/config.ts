@@ -4,6 +4,7 @@ import { parseSize } from './utils/size';
 dotenv.config();
 
 export const config = {
+    HOST: process.env.HOST || '0.0.0.0',
     PORT: parseInt(process.env.PORT || '3001', 10),
     ALLOWED_IPS: (process.env.ALLOWED_IPS || '').split(',').filter(Boolean),
     MAX_REQ_PER_MIN: parseInt(process.env.MAX_REQ_PER_MIN || '60', 10),
