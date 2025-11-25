@@ -9,8 +9,12 @@ import { httpProxyRoutes } from './routes/http-proxy';
 import { adminRoutes } from './routes/admin';
 import { userRoutes } from './routes/user';
 
+// Create Fastify instance with trust proxy enabled for Docker/reverse proxy environments
 const fastify = Fastify({
     logger: true,
+    trustProxy: true, // Trust X-Forwarded-For headers from reverse proxies
+    requestIdHeader: 'x-request-id',
+    requestIdLogLabel: 'reqId',
 });
 
 // Global Error Handler

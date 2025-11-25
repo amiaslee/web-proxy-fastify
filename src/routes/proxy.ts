@@ -3,6 +3,7 @@ import { fetchUpstream } from '../proxy/request';
 import { rewriteHtml } from '../proxy/rewrite';
 import { isValidUrl } from '../utils/url';
 import { statsService } from '../services/stats';
+import { getRealIP } from '../utils/ip';
 
 export async function proxyRoutes(fastify: FastifyInstance) {
 
@@ -21,7 +22,7 @@ export async function proxyRoutes(fastify: FastifyInstance) {
     };
 
     const handleProxy = async (req: FastifyRequest, reply: FastifyReply) => {
-        const ip = (req.ip || req.socket.remoteAddress) as string;
+        const ip = getRealIP(req);
         const rawPath = req.raw.url || '/';
 
         // Handle CORS preflight requests
