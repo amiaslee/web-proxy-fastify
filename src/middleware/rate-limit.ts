@@ -1,26 +1,46 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { statsService } from '../services/stats';
 import { config } from '../config';
+import { statsService } from '../services/stats';
+import { getIPLimitConfig } from '../config/ip-limits';
+import { packageService } from '../services/package';
 
-// Simple window based rate limiting
-// For production, use a sliding window or token bucket
 export async function rateLimitMiddleware(req: FastifyRequest, reply: FastifyReply) {
-    const ip = req.ip;
+    const ip = (req.ip || req.socket.remoteAddress) as string;
+
+    // Tier Priority: 3 (Packages) > 2 (Custom) > 1 (Default)
+    let maxRequests = config.MAX_REQ_PER_MIN;
+
+    // Tier 3: Check user packages (recharged users)
+    if (config.CARD_KEY_ENABLED) {
+        const packageRate = await packageService.getTotalRateLimit(ip);
+        if (packageRate > 0) {
+            maxRequests = packageRate;
+        } else {
+            // Tier 2: Check IP-specific configuration (custom users)
+            const ipConfig = getIPLimitConfig(ip, config.MAX_REQ_PER_MIN, config.MAX_BYTES_PER_DAY);
+            maxRequests = ipConfig.maxRequestsPerMin;
+        }
+    } else {
+        // Tier 2: If card-key disabled, use IP config
+        const ipConfig = getIPLimitConfig(ip, config.MAX_REQ_PER_MIN, config.MAX_BYTES_PER_DAY);
+        maxRequests = ipConfig.maxRequestsPerMin;
+    }
+
     const stats = await statsService.getStats(ip);
-
-    // Check requests in last minute
-    // Since our stats.history is limited, we can count timestamps > now - 60s
     const now = Date.now();
-    const oneMinuteAgo = now - 60000;
+    const oneMinuteAgo = now - 60 * 1000;
 
-    const recentRequests = stats.history.filter(h => h.timestamp > oneMinuteAgo).length;
+    // Count requests in the last minute
+    const recentRequests = stats.history.filter((h: any) => h.timestamp > oneMinuteAgo).length;
 
-    if (recentRequests >= config.MAX_REQ_PER_MIN) {
+    if (recentRequests >= maxRequests) {
+        req.log.warn(`Rate limit exceeded for IP: ${ip}`);
         reply.status(429).send({
-            error: 'Too Many Requests',
-            message: `Rate limit exceeded (${config.MAX_REQ_PER_MIN} req/min).`,
-            retryAfter: 60
+            error: 'Rate Limit Exceeded',
+            limit: maxRequests,
+            message: 'You have exceeded the rate limit. Please try again later or recharge.'
         });
-        return;
+        // CRITICAL: Throw error to halt request processing
+        throw new Error('Rate limit exceeded');
     }
 }

@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { fetchUpstream } from '../proxy/request';
 import { rewriteHtml } from '../proxy/rewrite';
 import { isValidUrl } from '../utils/url';
+import { statsService } from '../services/stats';
 
 export async function proxyRoutes(fastify: FastifyInstance) {
 
@@ -20,6 +21,7 @@ export async function proxyRoutes(fastify: FastifyInstance) {
     };
 
     const handleProxy = async (req: FastifyRequest, reply: FastifyReply) => {
+        const ip = (req.ip || req.socket.remoteAddress) as string;
         const rawPath = req.raw.url || '/';
 
         // Handle CORS preflight requests
@@ -66,6 +68,9 @@ export async function proxyRoutes(fastify: FastifyInstance) {
         if (!isValidUrl(targetUrl)) {
             return reply.status(400).send({ error: 'Invalid Target URL' });
         }
+
+        // Record request
+        await statsService.recordRequest(ip, targetUrl);
 
         const proxyBase = `${req.protocol}://${req.hostname}${req.port ? `:${req.port}` : ''}`;
 
@@ -117,13 +122,14 @@ export async function proxyRoutes(fastify: FastifyInstance) {
             const contentType = upstreamResponse.headers['content-type'] || '';
 
             if (contentType.includes('text/html')) {
-                const bodyBuffer = await upstreamResponse.body.text();
-                const rewritten = rewriteHtml(bodyBuffer, targetUrl, proxyBase);
-                return reply.send(rewritten);
+                const html = await upstreamResponse.body.text();
+                const rewritten = rewriteHtml(html, targetUrl, proxyBase);
+                await statsService.recordTraffic(ip, Buffer.byteLength(rewritten, 'utf-8'));
+                return reply.type('text/html').send(rewritten);
             } else if (contentType.includes('text/css')) {
                 // Rewrite CSS URLs
                 let css = await upstreamResponse.body.text();
-                css = css.replace(/url\((['"]?)([^'")]+)\1\)/g, (match: string, quote: string, url: string) => {
+                const rewrittenCss = css.replace(/url\((['"]?)([^'")]+)\1\)/g, (match: string, quote: string, url: string) => {
                     if (url.startsWith('data:') || url.startsWith('#')) {
                         return match;
                     }
@@ -134,14 +140,20 @@ export async function proxyRoutes(fastify: FastifyInstance) {
                         return match;
                     }
                 });
-                return reply.type('text/css').send(css);
-            } else if (contentType.includes('javascript') || contentType.includes('json')) {
-                // For JS/JSON, send as text
-                const text = await upstreamResponse.body.text();
-                return reply.send(text);
+                await statsService.recordTraffic(ip, Buffer.byteLength(rewrittenCss, 'utf-8'));
+                return reply.type('text/css').send(rewrittenCss);
+            } else if (contentType.includes('javascript') || contentType.includes('application/javascript')) {
+                const js = await upstreamResponse.body.text();
+                await statsService.recordTraffic(ip, Buffer.byteLength(js, 'utf-8'));
+                return reply.type('application/javascript').send(js);
+            } else if (contentType.includes('json') || contentType.includes('application/json')) {
+                const json = await upstreamResponse.body.text();
+                await statsService.recordTraffic(ip, Buffer.byteLength(json, 'utf-8'));
+                return reply.type('application/json').send(json);
             } else {
                 // For binary content (images, fonts, etc.), read as Buffer
                 const buffer = Buffer.from(await upstreamResponse.body.arrayBuffer());
+                await statsService.recordTraffic(ip, buffer.length);
                 return reply.send(buffer);
             }
 

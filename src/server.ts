@@ -1,6 +1,13 @@
 import Fastify from 'fastify';
+import net from 'net';
 import { config } from './config';
 import { ipFilter } from './middleware/ip-filter';
+import { quotaMiddleware } from './middleware/quota';
+import { rateLimitMiddleware } from './middleware/rate-limit';
+import { proxyRoutes } from './routes/proxy';
+import { httpProxyRoutes } from './routes/http-proxy';
+import { adminRoutes } from './routes/admin';
+import { userRoutes } from './routes/user';
 
 const fastify = Fastify({
     logger: true,
@@ -18,24 +25,59 @@ fastify.setErrorHandler((error: any, request, reply) => {
 
 // Middleware
 fastify.addHook('onRequest', ipFilter);
-
-import { loggerMiddleware } from './middleware/logger';
-import { quotaMiddleware } from './middleware/quota';
-import { rateLimitMiddleware } from './middleware/rate-limit';
-
-fastify.addHook('onRequest', loggerMiddleware);
-fastify.addHook('onRequest', quotaMiddleware);
 fastify.addHook('onRequest', rateLimitMiddleware);
+fastify.addHook('onRequest', quotaMiddleware);
 
-// Register Routes
-import { proxyRoutes } from './routes/proxy';
+// Register Admin Routes (admin endpoints)
+fastify.register(adminRoutes);
 
+// Register User Routes (balance, recharge, root)
+fastify.register(userRoutes);
+
+// Register HTTP Proxy Routes (for CLI tools with absolute URLs)
+fastify.register(httpProxyRoutes);
+
+// Register Web Proxy Routes LAST (catches everything else)
 fastify.register(proxyRoutes);
 
 // Health Check
 fastify.get('/health', async () => {
     return { status: 'ok', service: 'Web Proxy' };
 });
+
+// Handle CONNECT method for HTTPS tunneling (required for curl -x with HTTPS)
+fastify.server.on('connect', (req, clientSocket, head) => {
+    const { hostname, port } = parseConnectUrl(req.url || '');
+
+    fastify.log.info({ hostname, port }, 'CONNECT request received');
+
+    // Connect to the target server
+    const serverSocket = net.connect(parseInt(port) || 443, hostname, () => {
+        clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+        serverSocket.write(head);
+        serverSocket.pipe(clientSocket);
+        clientSocket.pipe(serverSocket);
+    });
+
+    serverSocket.on('error', (err) => {
+        fastify.log.error({ error: err, hostname, port }, 'CONNECT tunnel error');
+        clientSocket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
+    });
+
+    clientSocket.on('error', (err) => {
+        fastify.log.error({ error: err }, 'Client socket error');
+        serverSocket.end();
+    });
+});
+
+// Helper function to parse CONNECT URL
+function parseConnectUrl(url: string): { hostname: string; port: string } {
+    const parts = url.split(':');
+    return {
+        hostname: parts[0],
+        port: parts[1] || '443'
+    };
+}
 
 // Start Server
 const start = async () => {

@@ -8,12 +8,25 @@ datasource db {
 }
 
 model UserStats {
-  ip              String   @id
-  totalBytes      BigInt   @default(0)
-  requests        Int      @default(0)
-  lastRequestTime DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  ip              String   @id @db.VarChar(45)
+  
+  // Total statistics (never reset)
+  totalBytes      BigInt   @default(0) @map("total_bytes")
+  totalRequests   Int      @default(0) @map("total_requests")
+  
+  // Daily statistics (reset at midnight)
+  dailyBytes      BigInt   @default(0) @map("daily_bytes")
+  dailyRequests   Int      @default(0) @map("daily_requests")
+  dailyResetAt    DateTime @default(now()) @map("daily_reset_at")
+  
+  // Monthly statistics (reset on 1st of month)
+  monthlyBytes    BigInt   @default(0) @map("monthly_bytes")
+  monthlyRequests Int      @default(0) @map("monthly_requests")
+  monthlyResetAt  DateTime @default(now()) @map("monthly_reset_at")
+  
+  lastRequestTime DateTime @default(now()) @map("last_request_time")
+
+  @@map("user_stats")
 }
 
 model RequestLog {
@@ -21,4 +34,60 @@ model RequestLog {
   ip        String
   url       String
   timestamp DateTime @default(now())
+}
+
+model CardKey {
+  id         Int       @id @default(autoincrement())
+  code       String    @unique @db.VarChar(32)
+  bandwidth  BigInt
+  rateLimit  Int       @map("rate_limit")
+  validDays  Int       @default(30) @map("valid_days")
+  used       Boolean   @default(false)
+  usedBy     String?   @map("used_by") @db.VarChar(45)
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  expiresAt  DateTime? @map("expires_at")
+
+  @@index([code])
+  @@index([used])
+  @@map("card_keys")
+}
+
+model UserRecharge {
+  id             Int      @id @default(autoincrement())
+  ipAddress      String   @map("ip_address") @db.VarChar(45)
+  bandwidthAdded BigInt   @map("bandwidth_added")
+  rateAdded      Int      @map("rate_added")
+  cardCode       String?  @map("card_code") @db.VarChar(32)
+  rechargedAt    DateTime @default(now()) @map("recharged_at")
+
+  @@index([ipAddress])
+  @@map("user_recharges")
+}
+
+model UserBalance {
+  ipAddress      String   @id @map("ip_address") @db.VarChar(45)
+  totalBandwidth BigInt   @default(0) @map("total_bandwidth")
+  usedBandwidth  BigInt   @default(0) @map("used_bandwidth")
+  rateLimit      Int      @default(0) @map("rate_limit")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("user_balances")
+}
+
+model UserPackage {
+  id            Int      @id @default(autoincrement())
+  ipAddress     String   @map("ip_address") @db.VarChar(45)
+  bandwidth     BigInt
+  bandwidthUsed BigInt   @default(0) @map("bandwidth_used")
+  rateLimit     Int      @map("rate_limit")
+  validDays     Int      @map("valid_days")
+  activatedAt   DateTime @default(now()) @map("activated_at")
+  expiresAt     DateTime @map("expires_at")
+  cardCode      String?  @map("card_code") @db.VarChar(32)
+  active        Boolean  @default(true)
+
+  @@index([ipAddress, active])
+  @@index([expiresAt])
+  @@map("user_packages")
 }

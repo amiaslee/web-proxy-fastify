@@ -53,8 +53,17 @@ export function rewriteHtml(html: string, baseUrl: string, proxyBase: string): s
         const srcset = $(el).attr('srcset');
         if (srcset) {
             const rewritten = srcset.split(',').map(part => {
-                const [url, descriptor] = part.trim().split(/\\s+/);
-                return rewriteUrl(url) + (descriptor ? ' ' + descriptor : '');
+                const trimmed = part.trim();
+                // Split by whitespace to separate URL from descriptor (1x, 2x, etc.)
+                const spaceIndex = trimmed.search(/\s/);
+                if (spaceIndex > 0) {
+                    const url = trimmed.substring(0, spaceIndex);
+                    const descriptor = trimmed.substring(spaceIndex);
+                    return rewriteUrl(url) + descriptor;
+                } else {
+                    // No descriptor, just URL
+                    return rewriteUrl(trimmed);
+                }
             }).join(', ');
             $(el).attr('srcset', rewritten);
         }
