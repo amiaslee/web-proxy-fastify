@@ -197,34 +197,18 @@ export async function proxyRoutes(fastify: FastifyInstance) {
 
             const contentType = upstreamResponse.headers['content-type'] || '';
 
-            if (contentType.includes('text/html')) {
-                const html = await upstreamResponse.body.text();
-                const rewritten = rewriteHtml(html, targetUrl, proxyBase);
-                await statsService.recordTraffic(ip, Buffer.byteLength(rewritten, 'utf-8'));
-                return reply.type('text/html').send(rewritten);
-            } else if (contentType.includes('text/css')) {
-                // Rewrite CSS URLs
-                let css = await upstreamResponse.body.text();
-                const rewrittenCss = css.replace(/url\((['"]?)([^'")]+)\1\)/g, (match: string, quote: string, url: string) => {
-                    if (url.startsWith('data:') || url.startsWith('#')) {
-                        return match;
-                    }
-                    try {
-                        const resolved = new URL(url, targetUrl).toString();
-                        return `url(${quote}${proxyBase}/${resolved}${quote})`;
-                    } catch {
-                        return match;
-                    }
-                });
-                await statsService.recordTraffic(ip, Buffer.byteLength(rewrittenCss, 'utf-8'));
-                return reply.type('text/css').send(rewrittenCss);
-            } else if (contentType.includes('javascript') || contentType.includes('application/javascript')) {
-                const js = await upstreamResponse.body.text();
-                await statsService.recordTraffic(ip, Buffer.byteLength(js, 'utf-8'));
-                return reply.type('application/javascript').send(js);
-            } else if (contentType.includes('mpegurl') || contentType.includes('m3u8')) {
+            // CRITICAL: Check URL pattern first for m3u8 files
+            // Some servers send wrong Content-Type (like text/html) for m3u8 files
+            const isM3u8Url = targetUrl.toLowerCase().includes('.m3u8');
+
+            if (isM3u8Url || contentType.includes('mpegurl') || contentType.includes('m3u8')) {
                 // HLS Playlist (.m3u8) - Rewrite segment URLs to use proxy
-                req.log.info({ contentType, url: targetUrl }, 'M3U8 content type detected, rewriting URLs');
+                if (isM3u8Url && !contentType.includes('mpegurl') && !contentType.includes('m3u8')) {
+                    req.log.info({ contentType, url: targetUrl }, 'M3U8 detected in URL but Content-Type is wrong, treating as HLS');
+                } else {
+                    req.log.info({ contentType, url: targetUrl }, 'M3U8 content type detected, rewriting URLs');
+                }
+
                 let m3u8Content = await upstreamResponse.body.text();
 
                 // Rewrite URLs in m3u8 playlist
@@ -260,6 +244,31 @@ export async function proxyRoutes(fastify: FastifyInstance) {
                 req.log.info({ originalLines: lines.length, url: targetUrl }, 'Rewrote m3u8 playlist URLs');
                 await statsService.recordTraffic(ip, Buffer.byteLength(rewrittenM3u8, 'utf-8'));
                 return reply.type('application/vnd.apple.mpegurl').send(rewrittenM3u8);
+            } else if (contentType.includes('text/html')) {
+                const html = await upstreamResponse.body.text();
+                const rewritten = rewriteHtml(html, targetUrl, proxyBase);
+                await statsService.recordTraffic(ip, Buffer.byteLength(rewritten, 'utf-8'));
+                return reply.type('text/html').send(rewritten);
+            } else if (contentType.includes('text/css')) {
+                // Rewrite CSS URLs
+                let css = await upstreamResponse.body.text();
+                const rewrittenCss = css.replace(/url\((['"]?)([^'")]+)\1\)/g, (match: string, quote: string, url: string) => {
+                    if (url.startsWith('data:') || url.startsWith('#')) {
+                        return match;
+                    }
+                    try {
+                        const resolved = new URL(url, targetUrl).toString();
+                        return `url(${quote}${proxyBase}/${resolved}${quote})`;
+                    } catch {
+                        return match;
+                    }
+                });
+                await statsService.recordTraffic(ip, Buffer.byteLength(rewrittenCss, 'utf-8'));
+                return reply.type('text/css').send(rewrittenCss);
+            } else if (contentType.includes('javascript') || contentType.includes('application/javascript')) {
+                const js = await upstreamResponse.body.text();
+                await statsService.recordTraffic(ip, Buffer.byteLength(js, 'utf-8'));
+                return reply.type('application/javascript').send(js);
             } else if (contentType.includes('json') || contentType.includes('application/json')) {
                 const json = await upstreamResponse.body.text();
                 await statsService.recordTraffic(ip, Buffer.byteLength(json, 'utf-8'));
@@ -293,6 +302,7 @@ export async function proxyRoutes(fastify: FastifyInstance) {
 
                             // Skip problematic headers
                             if (lowerKey === 'content-encoding' || lowerKey === 'transfer-encoding') continue;
+                            if (lowerKey === 'content-type') continue; // Skip, we already set it manually above
                             if (lowerKey === 'set-cookie' || lowerKey === 'set-cookie2') continue;
                             if (lowerKey === 'content-security-policy' || lowerKey === 'content-security-policy-report-only') continue;
                             if (lowerKey === 'x-frame-options' || lowerKey === 'x-content-type-options') continue;
