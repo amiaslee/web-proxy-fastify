@@ -117,6 +117,7 @@ export async function userRoutes(fastify: FastifyInstance) {
 
             response.endpoints = {
                 proxy: '/https://example.com',
+                detect: '/detect/https://example.com/stream.flv (Detect stream format without proxying)',
                 cardInfo: '/card-info?code=YOUR_CARD_CODE',
                 recharge: '/recharge?code=YOUR_CARD_CODE',
                 health: '/health'

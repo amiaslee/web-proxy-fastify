@@ -8,6 +8,7 @@ import { proxyRoutes } from './routes/proxy';
 import { httpProxyRoutes } from './routes/http-proxy';
 import { adminRoutes } from './routes/admin';
 import { userRoutes } from './routes/user';
+import { detectRoutes } from './routes/detect';
 
 // Create Fastify instance with trust proxy enabled for Docker/reverse proxy environments
 const fastify = Fastify({
@@ -15,6 +16,17 @@ const fastify = Fastify({
     trustProxy: true, // Trust X-Forwarded-For headers from reverse proxies
     requestIdHeader: 'x-request-id',
     requestIdLogLabel: 'reqId',
+});
+
+// Add CORS headers manually
+fastify.addHook('onRequest', async (request, reply) => {
+    reply.header('Access-Control-Allow-Origin', '*');
+    reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (request.method === 'OPTIONS') {
+        return reply.status(200).send();
+    }
 });
 
 // Global Error Handler
@@ -37,6 +49,9 @@ fastify.register(adminRoutes);
 
 // Register User Routes (balance, recharge, root)
 fastify.register(userRoutes);
+
+// Register Detect Routes (stream URL detection - no quota/rate limit)
+fastify.register(detectRoutes);
 
 // Register HTTP Proxy Routes (for CLI tools with absolute URLs)
 fastify.register(httpProxyRoutes);

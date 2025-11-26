@@ -5,6 +5,10 @@ import { getIPLimitConfig } from '../config/ip-limits';
 import { packageService } from '../services/package';
 
 export async function quotaMiddleware(req: FastifyRequest, reply: FastifyReply) {
+    // Skip quota for detect endpoint
+    if (req.url.startsWith('/detect/')) {
+        return;
+    }
     const ip = (req.ip || req.socket.remoteAddress) as string;
 
     // Tier Priority: 3 (Packages) > 2 (Custom) > 1 (Default)

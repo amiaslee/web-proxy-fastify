@@ -19,9 +19,9 @@ export async function fetchUpstream(
         }
     }
 
-    // Add User-Agent if missing (optional, but good for some sites)
+    // Add User-Agent if missing - use realistic browser UA
     if (!forwardHeaders['user-agent']) {
-        forwardHeaders['user-agent'] = 'Mozilla/5.0 (Compatible; WebProxy/1.0)';
+        forwardHeaders['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
     }
 
     try {
@@ -30,6 +30,8 @@ export async function fetchUpstream(
             headers: forwardHeaders,
             body: body || undefined,
             maxRedirections: 0, // We handle redirects manually to rewrite them
+            headersTimeout: 30000, // 30s for slow servers
+            bodyTimeout: 30000, // 30s for slow responses
         } as any);
         return response;
     } catch (error: any) {
