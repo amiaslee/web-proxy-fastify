@@ -27,13 +27,19 @@ function loadIPLimitConfigs(): Record<string, IPLimitConfig> {
             }
 
             const [ip, reqPerMin, bytesPerDay] = parts;
-            const maxRequestsPerMin = parseInt(reqPerMin, 10);
-            const maxBytesPerDay = parseSize(bytesPerDay);
 
-            if (isNaN(maxRequestsPerMin) || maxRequestsPerMin <= 0) {
-                console.error(`Invalid requests per minute in ${key}: ${reqPerMin}`);
-                continue;
+            let maxRequestsPerMin: number;
+            if (reqPerMin.trim() === '*') {
+                maxRequestsPerMin = -1;
+            } else {
+                maxRequestsPerMin = parseInt(reqPerMin, 10);
+                if (isNaN(maxRequestsPerMin) || maxRequestsPerMin <= 0) {
+                    console.error(`Invalid requests per minute in ${key}: ${reqPerMin}`);
+                    continue;
+                }
             }
+
+            const maxBytesPerDay = parseSize(bytesPerDay);
 
             if (maxBytesPerDay <= 0) {
                 console.error(`Invalid bytes per day in ${key}: ${bytesPerDay}`);

@@ -5,8 +5,15 @@ import { getIPLimitConfig } from '../config/ip-limits';
 import { packageService } from '../services/package';
 
 export async function rateLimitMiddleware(req: FastifyRequest, reply: FastifyReply) {
-    // Skip rate limiting for detect endpoint
-    if (req.url.startsWith('/detect/')) {
+    // Skip rate limiting for system paths
+    if (
+        req.url.startsWith('/detect/') ||
+        req.url === '/' ||
+        req.url.startsWith('/card-info') ||
+        req.url.startsWith('/recharge') ||
+        req.url.startsWith('/health') ||
+        req.url.startsWith(config.ADMIN_API_PREFIX)
+    ) {
         return;
     }
 
@@ -31,21 +38,23 @@ export async function rateLimitMiddleware(req: FastifyRequest, reply: FastifyRep
         maxRequests = ipConfig.maxRequestsPerMin;
     }
 
-    const stats = await statsService.getStats(ip);
-    const now = Date.now();
-    const oneMinuteAgo = now - 60 * 1000;
+    // CRITICAL FIX: Query database directly for recent requests to avoid race conditions
+    // This ensures we get the most up-to-date count, including concurrent requests
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+    const recentRequests = await statsService.countRecentRequests(ip, oneMinuteAgo);
 
-    // Count requests in the last minute
-    const recentRequests = stats.history.filter((h: any) => h.timestamp > oneMinuteAgo).length;
+    // Check if unlimited (-1)
+    if (maxRequests === -1) {
+        return;
+    }
 
     if (recentRequests >= maxRequests) {
-        req.log.warn(`Rate limit exceeded for IP: ${ip}`);
-        reply.status(429).send({
+        req.log.warn(`Rate limit exceeded for IP: ${ip} (${recentRequests}/${maxRequests})`);
+        return reply.status(429).send({
             error: 'Rate Limit Exceeded',
-            limit: maxRequests,
+            limit: `${maxRequests} requests/minute`,
+            current: recentRequests,
             message: 'You have exceeded the rate limit. Please try again later or recharge.'
         });
-        // CRITICAL: Throw error to halt request processing
-        throw new Error('Rate limit exceeded');
     }
 }

@@ -5,6 +5,12 @@
  */
 export function parseSize(sizeStr: string): number {
     const str = sizeStr.trim().toUpperCase();
+
+    // Handle wildcard for unlimited
+    if (str === '*') {
+        return -1;
+    }
+
     const match = str.match(/^(\d+(?:\.\d+)?)\s*(KB|MB|GB|TB)?$/);
 
     if (!match) {

@@ -1,5 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { fetchUpstream } from '../proxy/request';
+import { statsService } from '../services/stats';
+import { getRealIP } from '../utils/ip';
 
 /**
  * HTTP Proxy Protocol Support
@@ -23,6 +25,11 @@ export async function httpProxyRoutes(fastify: FastifyInstance) {
         }
 
         req.log.info({ url, method: req.method }, 'HTTP Proxy request');
+
+        const ip = getRealIP(req);
+
+        // Record request for rate limiting
+        await statsService.recordRequest(ip, url);
 
         try {
             // Prepare request body for POST/PUT/PATCH
@@ -67,6 +74,9 @@ export async function httpProxyRoutes(fastify: FastifyInstance) {
 
             // Stream response as binary buffer
             const buffer = Buffer.from(await response.body.arrayBuffer());
+
+            // Record traffic for quota tracking
+            await statsService.recordTraffic(ip, buffer.length);
 
             // Send response and return true to prevent further processing
             reply.send(buffer);

@@ -40,8 +40,16 @@ export async function userRoutes(fastify: FastifyInstance) {
 
             // Calculate base quota usage (consumed first)
             const baseLimit = config.MAX_BYTES_PER_DAY;
-            const baseUsed = Math.min(todayBytes, baseLimit);
-            const baseRemaining = Math.max(0, baseLimit - todayBytes);
+            let baseUsed = 0;
+            let baseRemaining = 0;
+
+            if (baseLimit === -1) {
+                baseUsed = todayBytes;
+                baseRemaining = -1; // Unlimited
+            } else {
+                baseUsed = Math.min(todayBytes, baseLimit);
+                baseRemaining = Math.max(0, baseLimit - todayBytes);
+            }
 
             // Calculate custom quota usage (consumed after base)
             // Custom bandwidth is ADDITIONAL to base (not included in total)
@@ -52,9 +60,22 @@ export async function userRoutes(fastify: FastifyInstance) {
                 // Custom limit is the configured value itself (additional)
                 customLimit = ipConfig.maxBytesPerDay;
 
-                const remainingAfterBase = Math.max(0, todayBytes - baseLimit);
-                customUsed = Math.min(remainingAfterBase, customLimit);
-                customRemaining = Math.max(0, customLimit - remainingAfterBase);
+                if (customLimit === -1) {
+                    // If custom limit is unlimited, then remaining is unlimited
+                    // But wait, if base is unlimited, we never reach custom?
+                    // Actually, if custom is unlimited, it overrides base?
+                    // No, logic is: base + custom.
+                    // If base is unlimited, we don't need custom.
+                    // If base is limited, and we exceed it, we use custom.
+
+                    const remainingAfterBase = Math.max(0, todayBytes - (baseLimit === -1 ? todayBytes : baseLimit));
+                    customUsed = remainingAfterBase;
+                    customRemaining = -1;
+                } else {
+                    const remainingAfterBase = Math.max(0, todayBytes - (baseLimit === -1 ? todayBytes : baseLimit));
+                    customUsed = Math.min(remainingAfterBase, customLimit);
+                    customRemaining = Math.max(0, customLimit - remainingAfterBase);
+                }
             }
 
             // Get package totals
@@ -88,7 +109,12 @@ export async function userRoutes(fastify: FastifyInstance) {
             if (hasCustomLimits) allRates.push(ipConfig.maxRequestsPerMin);
             if (packageRate > 0) allRates.push(packageRate);
 
-            const totalDailyRemaining = baseRemaining + customRemaining;
+            let totalDailyRemaining: number;
+            if (baseRemaining === -1 || customRemaining === -1) {
+                totalDailyRemaining = -1;
+            } else {
+                totalDailyRemaining = baseRemaining + customRemaining;
+            }
 
             // Build response
             const response: any = {
@@ -105,7 +131,9 @@ export async function userRoutes(fastify: FastifyInstance) {
                 response.effective = {
                     maxRate: Math.max(...allRates),
                     totalBandwidth: formatBandwidth(
-                        BigInt(totalDailyRemaining) + packageBandwidth
+                        (totalDailyRemaining === -1 || packageBandwidth === BigInt(-1))
+                            ? -1
+                            : BigInt(totalDailyRemaining) + packageBandwidth
                     )
                 };
             } else {

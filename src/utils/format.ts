@@ -2,6 +2,8 @@
 export function formatBandwidth(bytes: bigint | number): string {
     const num = typeof bytes === 'bigint' ? Number(bytes) : bytes;
 
+    if (num === -1) return 'Unlimited';
+
     const TB = 1024 * 1024 * 1024 * 1024;
     const GB = 1024 * 1024 * 1024;
     const MB = 1024 * 1024;

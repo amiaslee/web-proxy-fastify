@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { config } from '../config';
+import { packageService } from './package';
 
 const prisma = new PrismaClient();
 
@@ -172,6 +173,9 @@ export const statsService = {
 
     // Record traffic to packages (not included in daily)
     async recordPackageTraffic(ip: string, bytes: number) {
+        // Deduct from packages
+        await packageService.deductBandwidth(ip, BigInt(bytes));
+
         await prisma.userStats.upsert({
             where: { ip },
             update: {
@@ -197,6 +201,20 @@ export const statsService = {
     async recordTraffic(ip: string, bytes: number) {
         // Default to daily traffic
         await this.recordDailyTraffic(ip, bytes);
+    },
+
+    // Count recent requests within a time window (for rate limiting)
+    // This method queries the database directly to avoid race conditions
+    async countRecentRequests(ip: string, since: Date): Promise<number> {
+        const count = await prisma.requestLog.count({
+            where: {
+                ip,
+                timestamp: {
+                    gte: since,
+                },
+            },
+        });
+        return count;
     },
 
     async getAllStats() {

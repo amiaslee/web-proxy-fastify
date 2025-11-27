@@ -69,6 +69,10 @@ export class PackageService {
     async getTotalRemainingBandwidth(ip: string): Promise<bigint> {
         const packages = await this.getActivePackages(ip);
 
+        // Check for unlimited package
+        const hasUnlimited = packages.some(pkg => pkg.bandwidth === BigInt(-1));
+        if (hasUnlimited) return BigInt(-1);
+
         return packages.reduce((total, pkg) => {
             const remaining = pkg.bandwidth - pkg.bandwidthUsed;
             return total + (remaining > BigInt(0) ? remaining : BigInt(0));
@@ -78,6 +82,10 @@ export class PackageService {
     // Deduct bandwidth from packages (use expiring-soon first)
     async deductBandwidth(ip: string, bytes: bigint): Promise<boolean> {
         const packages = await this.getActivePackages(ip);
+
+        // Check for unlimited package
+        const hasUnlimited = packages.some(pkg => pkg.bandwidth === BigInt(-1));
+        if (hasUnlimited) return false; // Not exhausted
 
         let remaining = bytes;
 

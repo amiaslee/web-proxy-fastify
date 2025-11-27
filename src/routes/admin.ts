@@ -25,8 +25,21 @@ export async function adminRoutes(fastify: FastifyInstance) {
         const { count, bandwidth, rate, days } = req.query as any;
 
         const cardCount = parseInt(count) || 10;
-        const bandwidthBytes = parseSize(bandwidth || config.CARD_KEY_DEFAULT_BANDWIDTH.toString());
-        const rateLimit = parseInt(rate) || config.CARD_KEY_DEFAULT_RATE;
+
+        let bandwidthBytes: number;
+        if (bandwidth === '*') {
+            bandwidthBytes = -1;
+        } else {
+            bandwidthBytes = parseSize(bandwidth || config.CARD_KEY_DEFAULT_BANDWIDTH.toString());
+        }
+
+        let rateLimit: number;
+        if (rate === '*') {
+            rateLimit = -1;
+        } else {
+            rateLimit = parseInt(rate) || config.CARD_KEY_DEFAULT_RATE;
+        }
+
         const validDays = parseInt(days) || config.CARD_KEY_DEFAULT_VALID_DAYS;
 
         try {
