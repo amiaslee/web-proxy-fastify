@@ -3,6 +3,7 @@
 *.local
 *.log*
 package-lock.json
+.env
 
 # Dist
 node_modules
